@@ -105,5 +105,60 @@
   <div id="toast" class="toast"></div>
 
   <script src="app.js"></script>
+<script>
+
+if ("serviceWorker" in navigator) {
+
+  navigator.serviceWorker.register("./sw.js").catch(console.error);
+
+}
+
+
+
+let deferredPrompt = null;
+
+window.addEventListener("beforeinstallprompt", (e) => {
+
+  e.preventDefault();
+
+  deferredPrompt = e;
+
+  const btn = document.getElementById("pwaInstallBtn");
+
+  if (btn) btn.style.display = "inline-flex";
+
+});
+
+
+
+document.getElementById("pwaInstallBtn")?.addEventListener("click", async () => {
+
+  if (!deferredPrompt) return;
+
+  const btn = document.getElementById("pwaInstallBtn");
+
+  btn.disabled = true;
+
+  deferredPrompt.prompt();
+
+  const choice = await deferredPrompt.userChoice;
+
+  deferredPrompt = null;
+
+  btn.style.display = "none";
+
+});
+
+
+
+window.addEventListener("appinstalled", () => {
+
+  const btn = document.getElementById("pwaInstallBtn");
+
+  if (btn) btn.style.display = "none";
+
+});
+
+</script>
 </body>
 </html>
