@@ -1,0 +1,502 @@
+/* NoirPlan — Vertical Timeline (lane-capped + "+N more" + long-event clamp) */
+(() => {
+  const $ = s => document.querySelector(s);
+
+  // DOM
+  const view = $('#view');
+  const search = $('#search');
+  const tabs = [...document.querySelectorAll('.nav-btn')];
+
+  // Modal
+  const modal = $('#modal');
+  const modalTitle = $('#modalTitle');
+  const closeModal = $('#closeModal');
+  const mDate = $('#mDate'), mStart = $('#mStart'), mEnd = $('#mEnd');
+  const mTitle = $('#mTitle'), mNotes = $('#mNotes');
+  const mRepeat = $('#mRepeat');
+  const tagChips = $('#tagChips'); const mCustom = $('#mCustom');
+  const saveBtn = $('#saveBtn'); const delBtn = $('#delBtn');
+  const toast = $('#toast');
+
+  // Emoji UI
+  const emojiBtn = document.getElementById('emojiBtn');
+  const emojiPicker = document.getElementById('emojiPicker');
+
+  // DB
+  const DB = 'noirplan.db', STORE = 'events'; let db;
+  const openDB = () => new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
+    r.onsuccess = () => (db = r.result, res());
+    r.onerror = () => rej(r.error);
+  });
+  const store = (mode='readonly') => db.transaction(STORE, mode).objectStore(STORE);
+  const getAll = () => new Promise((res, rej) => { const q = store().getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>rej(q.error); });
+  const put = (obj) => new Promise((res, rej) => { const q = store('readwrite').put(obj); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error); });
+  const remove = (id) => new Promise((res, rej) => { const q = store('readwrite').delete(id); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error); });
+
+  // Utils
+  const tzISO = (d=new Date()) => new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const addDays = (iso, n) => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return tzISO(d); };
+  const fmtTime = t => t || '—';
+  const esc = s => String(s||'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const wkShort = i => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][i];
+  const tagClass = t => ['work','study','health','errand','default'].includes(t) ? t : 'other';
+
+  function splitLeadingEmoji(str){
+    const text = String(str||'').trimStart();
+    if (!text) return { emoji: '', text: '' };
+    const arr = Array.from(text);
+    const first = arr[0] || '';
+    const cp = first.codePointAt(0) || 0;
+    const isEmj =
+      (cp >= 0x1F300 && cp <= 0x1FAFF) ||
+      (cp >= 0x1F170 && cp <= 0x1F251) ||
+      (cp >= 0x2600  && cp <= 0x27BF)  ||
+      (cp == 0x24C2) || (cp == 0x3030) || (cp == 0x303D) || (cp == 0x3297) || (cp == 0x3299);
+    if (isEmj) return { emoji: first, text: arr.slice(1).join('').replace(/^\s+/, '') };
+    return { emoji: '', text };
+  }
+
+  // State
+  let tab = 'today';
+  let editId = null;
+  let tag = 'default';
+  let query = '';
+  let currentEmoji = (emojiBtn?.textContent || '😀').trim() || '😀';
+
+  // Emoji picker
+  const emojiList = "😀🙂😊😉😍😘😎🤓🤩🥳🤔🙌👍👎👏🔥⭐️🌟✨⚡️💡📚🗓️🏃‍♂️🏋️‍♀️🧘‍♂️🚴‍♀️💼🛠️🧠💬🎯🍎☕️🍷🚬💩🕒".split('');
+  function renderEmojiPicker(){
+    if(!emojiPicker) return;
+    const wrap = document.createElement('div'); wrap.className = 'emoji-grid';
+    emojiPicker.innerHTML = ''; emojiPicker.appendChild(wrap);
+    for(const e of emojiList){
+      const b = document.createElement('button');
+      b.type='button'; b.className='emoji-item'; b.textContent=e; b.setAttribute('aria-label','Pick '+e);
+      b.onclick = ()=>{ currentEmoji = e; if (emojiBtn) emojiBtn.textContent = e; toggleEmojiPicker(false); };
+      wrap.appendChild(b);
+    }
+  }
+  function toggleEmojiPicker(show=null){
+    if(!emojiPicker) return;
+    const willShow = show===null ? emojiPicker.classList.contains('hidden') : show;
+    if (willShow){ renderEmojiPicker(); emojiPicker.classList.remove('hidden'); emojiPicker.setAttribute('aria-hidden','false'); }
+    else { emojiPicker.classList.add('hidden'); emojiPicker.setAttribute('aria-hidden','true'); }
+  }
+  setTimeout(()=>{
+    if(emojiBtn && emojiPicker){
+      emojiBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleEmojiPicker(); });
+      document.addEventListener('click', (ev)=>{
+        if(!emojiPicker.classList.contains('hidden')){
+          const inside = emojiPicker.contains(ev.target) || emojiBtn.contains(ev.target);
+          if(!inside) toggleEmojiPicker(false);
+        }
+      });
+    }
+  }, 0);
+
+  // Quick templates (merged row)
+  const quickTemplates = document.getElementById('quickTemplates');
+  if (quickTemplates){
+    quickTemplates.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.tpl-btn'); if(!btn) return;
+      const emo = btn.getAttribute('data-emoji') || '';
+      const txt = btn.getAttribute('data-text') || '';
+      if (emo){ currentEmoji = emo; if (emojiBtn) emojiBtn.textContent = emo; }
+      if (mTitle){ mTitle.value = (emo ? emo+' ' : '') + txt; mTitle.dispatchEvent(new Event('input', {bubbles:true})); }
+    });
+  }
+
+  // Sync manual typing → emoji button
+  if (mTitle){
+    mTitle.addEventListener('input', ()=>{
+      const parts = splitLeadingEmoji(mTitle.value||'');
+      if (parts.emoji){ currentEmoji = parts.emoji; if (emojiBtn) emojiBtn.textContent = currentEmoji; }
+    });
+  }
+
+  // Tag chips
+  tagChips.addEventListener('click',(e)=>{
+    const b = e.target.closest('.chip'); if(!b) return;
+    [...tagChips.querySelectorAll('.chip')].forEach(c=>c.classList.remove('active'));
+    b.classList.add('active'); tag = b.dataset.tag;
+    if (tag === 'custom') mCustom.classList.remove('hidden'); else { mCustom.classList.add('hidden'); mCustom.value=''; }
+  });
+
+  // Panel buttons
+  closeModal.onclick = ()=> close();
+  modal.addEventListener('click',(e)=>{ if(e.target===modal) close(); });
+
+  const close = ()=>{
+    modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true');
+    document.body.classList.remove('modal-open'); clearForm();
+  };
+  function clearForm(){
+    editId = null; tag='default';
+    mDate.value = tzISO(); mStart.value=''; mEnd.value=''; mTitle.value=''; mNotes.value='';
+    [...tagChips.querySelectorAll('.chip')].forEach(c=>c.classList.remove('active'));
+    tagChips.querySelector('[data-tag="default"]').classList.add('active');
+    mCustom.classList.add('hidden'); mCustom.value=''; mRepeat.value='none';
+    delBtn.classList.add('hidden');
+  }
+  const toastMsg = (s)=>{ toast.textContent=s; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),1200); };
+
+  saveBtn.onclick = async ()=>{
+    const d = mDate.value || tzISO();
+    let tRaw = (mTitle.value||'').trim();
+    if(!tRaw){ mTitle.focus(); return; }
+    const parts = splitLeadingEmoji(tRaw);
+    const chosenEmoji = parts.emoji || currentEmoji || '';
+    const normalizedTitle = chosenEmoji ? (chosenEmoji + (parts.text ? ' ' + parts.text : '')) : tRaw;
+
+    let useTag = tag === 'custom' ? (mCustom.value.trim() || 'other') : tag;
+    const base = {
+      id: editId || (Date.now().toString(36)+Math.random().toString(36).slice(2,7)),
+      date:d, start:mStart.value||'', end:mEnd.value||'',
+      title:normalizedTitle, notes:mNotes.value||'',
+      tag:useTag, createdAt: Date.now()
+    };
+
+    if (!editId && mRepeat.value !== 'none'){
+      for (let i=0;i<10;i++){
+        await put({ ...base, id: base.id+'_'+i, date: mRepeat.value==='daily'? addDays(d,i) : addDays(d, i*7) });
+      }
+    } else {
+      await put(base);
+    }
+    toastMsg('Saved'); close(); render();
+  };
+  delBtn.onclick = async ()=>{ if(!editId) return; await remove(editId); toastMsg('Deleted'); close(); render(); };
+
+  // Search + tabs
+  search?.addEventListener('input', ()=>{ query = search.value.trim().toLowerCase(); render(); });
+  tabs.forEach(b=>b.addEventListener('click', ()=>{ tabs.forEach(x=>x.classList.remove('active')); b.classList.add('active'); tab = b.dataset.tab; render(); }));
+
+  // Filters
+  function matches(ev){
+    if(!query) return true;
+    return (ev.title+' '+(ev.notes||'')+' '+(ev.tag||'')).toLowerCase().includes(query);
+  }
+  function groupByDate(arr){
+    const m = {}; for(const e of arr){ (m[e.date] ||= []).push(e); }
+    for(const k in m){ m[k].sort((a,b)=>(a.start||'').localeCompare(b.start||'')); }
+    return m;
+  }
+
+  // Time helpers
+  function minutesSinceMidnight(t){
+    if(!t || !/^[0-2]\d:[0-5]\d$/.test(t)) return null;
+    const [H,M] = t.split(':').map(Number); return H*60+M;
+  }
+
+  // "+N more" popover
+  function showMorePopover(anchorEl, list){
+    let pop = document.getElementById('morePopover');
+    if (pop) pop.remove();
+    pop = document.createElement('div'); pop.id='morePopover'; pop.className='more-pop glass';
+    pop.innerHTML = `<div class="more-head">Overlapping (${list.length})</div>` +
+      list.map(x=>{
+        const parts = splitLeadingEmoji(x.title||''); const tm = `${x.start||'—'}–${x.end||'—'}`;
+        return `<button class="more-item" data-id="${x.id}">
+          <span class="mi-logo">${parts.emoji||'•'}</span>
+          <span class="mi-title">${esc(parts.text||'Untitled')}</span>
+          <span class="mi-time">${tm}</span>
+        </button>`;
+      }).join('');
+    document.body.appendChild(pop);
+    const r = anchorEl.getBoundingClientRect();
+    pop.style.left = Math.max(8, r.right - 220) + 'px';
+    pop.style.top  = (r.top + window.scrollY + 6) + 'px';
+    pop.addEventListener('click',(e)=>{
+      const btn = e.target.closest('.more-item'); if(!btn) return;
+      const id = btn.dataset.id; pop.remove(); openDetail(id);
+    });
+    document.addEventListener('click', function onDoc(e){
+      if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', onDoc); }
+    }, {capture:true, once:true});
+  }
+
+  // VERTICAL TIMELINE (lane-capped + long-event clamp + "+N more")
+  function buildTimelineVertical(rows, mountEl){
+    const gridPxPerMin = 1;               // 60 px per hour
+    const minPx = 36;                      // minimum block height
+    const maxPx = 120;                     // maximum visual height (clamped)
+    const MAX_LANES = 2;                   // max lanes to render; rest go into "+N more"
+    const gutter = 64, padLR = 8, gap = 6;
+
+    const items = rows.map(ev=>{
+      let s = minutesSinceMidnight(ev.start);
+      let e = minutesSinceMidnight(ev.end);
+      if(s==null && e==null){ s = 9*60; e = 9*60+40; }
+      else if(s!=null && e==null){ e = s+40; }
+      else if(s==null && e!=null){ s = Math.max(0, e-40); }
+      if(e < s) e = s+15;
+      const displayEnd = Math.max(e, s + Math.ceil(minPx / gridPxPerMin));
+      return { ev, s, e, displayEnd };
+    }).sort((a,b)=> (a.s - b.s) || (a.displayEnd - b.displayEnd));
+
+    const card = document.createElement('div'); card.className = 'timeline-card glass';
+    const tl = document.createElement('div'); tl.className = 'timeline-grid';
+
+    // hour labels & lines
+    for(let h=0; h<=24; h++){
+      const line = document.createElement('div');
+      line.className = 'tl-hour'; line.style.top = (h*60)+'px';
+      if(h<24){
+        const lab = document.createElement('div'); lab.className='lab'; lab.textContent = String(h).padStart(2,'0')+':00';
+        line.appendChild(lab);
+      }
+      tl.appendChild(line);
+    }
+    const now = new Date();
+    const nowLine = document.createElement('div'); nowLine.className='tl-now';
+    nowLine.style.top = ((now.getHours()*60 + now.getMinutes())*gridPxPerMin)+'px';
+    tl.appendChild(nowLine);
+
+    // Build clusters of overlapping items
+    const clusters = [];
+    let cur = []; let curEnd = -1;
+    for(const it of items){
+      if(!cur.length || it.s < curEnd){
+        cur.push(it); curEnd = Math.max(curEnd, it.displayEnd);
+      } else {
+        clusters.push(cur); cur = [it]; curEnd = it.displayEnd;
+      }
+    }
+    if(cur.length) clusters.push(cur);
+
+    // Render each cluster with up to MAX_LANES lanes; overflow -> "+N more"
+    for (const cluster of clusters){
+      // lane assignment with cap
+      const laneEnds = [];
+      const placed = [];
+      const overflow = [];
+      for (const it of cluster){
+        let lane = 0;
+        while(lane < laneEnds.length && laneEnds[lane] > it.s){ lane++; }
+        if (lane < MAX_LANES){
+          laneEnds[lane] = it.displayEnd;
+          placed.push({ ...it, lane });
+        } else {
+          overflow.push(it);
+        }
+      }
+      const lanes = Math.max(1, Math.min(MAX_LANES, laneEnds.length));
+      const avail = Math.max(120, (tl.clientWidth || 320) - gutter - padLR*2);
+      const laneWidth = (avail - (lanes-1)*gap) / lanes;
+
+      // Render placed
+      for (const p of placed){
+        const b = document.createElement('div');
+        const tag = p.ev.tag && ['work','study','health','errand','default'].includes(p.ev.tag) ? p.ev.tag : (p.ev.tag ? 'other' : 'default');
+        b.className = `ev2 ${tag}`;
+        b.dataset.id = p.ev.id;
+        b.style.cursor = 'pointer';
+
+        const top = p.s * gridPxPerMin;
+        const rawH = (p.e - p.s) * gridPxPerMin;
+        const height = Math.max(minPx, Math.min(maxPx, rawH));
+        const leftPx = gutter + padLR + p.lane * (laneWidth + gap);
+
+        b.style.top = top+'px';
+        b.style.height = height+'px';
+        b.style.left = leftPx+'px';
+        b.style.width = laneWidth+'px';
+
+        // emoji as left logo (not in title)
+        const T = splitLeadingEmoji(p.ev.title||'');
+        const logo = document.createElement('div'); logo.className = 'emlogo'; logo.textContent = T.emoji || '•';
+        b.appendChild(logo);
+
+        const cont = document.createElement('div'); cont.className = 'ev2-content';
+        const title = document.createElement('div'); title.className='t';
+        const tx = document.createElement('span'); tx.textContent = (T.text || 'Untitled'); title.appendChild(tx);
+
+        // meta row: time fixed; notes truncate
+        const meta = document.createElement('div'); meta.className='meta';
+        const tm = document.createElement('span'); tm.className = 'tm';
+        tm.textContent = (p.ev.start?p.ev.start:'—') + '–' + (p.ev.end?p.ev.end:'—');
+        meta.appendChild(tm);
+        if (p.ev.notes){
+          const notes = document.createElement('span'); notes.className = 'notes';
+          notes.textContent = ' · ' + (p.ev.notes||''); meta.appendChild(notes);
+        }
+
+        cont.appendChild(title); cont.appendChild(meta);
+        b.appendChild(cont);
+
+        // visual clamp indicator for long events
+        if (rawH > height){
+          const clamp = document.createElement('div'); clamp.className='clamp-fade';
+          b.appendChild(clamp);
+        }
+
+        tl.appendChild(b);
+      }
+
+      // Overflow button
+      if (overflow.length){
+        const btn = document.createElement('button');
+        btn.className = 'more-btn';
+        btn.textContent = `+${overflow.length}`;
+
+        // Compute cluster bounds
+        const topY = Math.min(...cluster.map(x=>x.s))*gridPxPerMin;
+        const bottomY = Math.max(...cluster.map(x=>x.displayEnd))*gridPxPerMin;
+        const midY = (topY + bottomY)/2;
+
+        btn.style.top = (midY - 10) + 'px'; // center vertically
+        btn.style.right = '6px';
+        btn.onclick = (e)=>{ e.stopPropagation(); showMorePopover(btn, overflow.map(o=>o.ev)); };
+        tl.appendChild(btn);
+      }
+    }
+
+    card.appendChild(tl);
+    mountEl.appendChild(card);
+
+    // auto-scroll near now
+    setTimeout(()=>{
+      const y = Math.max(0, (new Date().getHours()*60 + new Date().getMinutes())*gridPxPerMin - 180);
+      tl.scrollTo({ top: y, behavior:'smooth' });
+    }, 50);
+
+    // click to details
+    tl.addEventListener('click', (e)=>{
+      const evBlock = e.target.closest('.ev2');
+      if (evBlock && evBlock.dataset.id){ openDetail(evBlock.dataset.id); }
+    });
+  }
+
+  // Details page (unchanged)
+  async function openDetail(id){
+    const all = await getAll();
+    const ev = all.find(x=>x.id===id); if(!ev) return;
+    const t = splitLeadingEmoji(ev.title);
+    const prettyTime = (ev.start||'—') + '–' + (ev.end||'—');
+
+    view.innerHTML = `
+      <section class="section">
+        <div class="back-row">
+          <button id="backBtn" class="btn">← Back</button>
+          <div style="flex:1"></div>
+          <button id="editBtn" class="btn">Edit</button>
+          <button id="deleteBtn" class="btn danger">Delete</button>
+        </div>
+
+        <div class="detail-wrap">
+          <div class="detail-card">
+            <div class="detail-head">
+              <h2 style="margin:0; font-size:18px; display:flex; align-items:center; gap:8px;">
+                ${t.emoji ? `<span style="font-size:18px">${t.emoji}</span>` : ``}
+                <span>${esc(t.text||'Untitled')}</span>
+              </h2>
+            </div>
+            <div class="detail-grid" style="margin-top:10px">
+              <div class="detail-row"><b>Date</b> <span>${esc(ev.date)}</span></div>
+              <div class="detail-row"><b>Time</b> <span>${esc(prettyTime)}</span></div>
+              <div class="detail-row"><b>Tag</b> <span class="tag"><span class="dot ${tagClass(ev.tag||'default')}"></span>${esc(ev.tag||'default')}</span></div>
+              ${ev.notes ? `<div class="detail-row"><b>Notes</b> <span>${esc(ev.notes)}</span></div>` : ``}
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+
+    $('#backBtn')?.addEventListener('click', ()=> render());
+    $('#editBtn')?.addEventListener('click', ()=>{
+      editId = ev.id;
+      mDate.value = ev.date; mStart.value = ev.start||''; mEnd.value = ev.end||'';
+      mTitle.value = ev.title; mNotes.value = ev.notes||'';
+      const parts = splitLeadingEmoji(ev.title||'');
+      if (parts.emoji){ currentEmoji = parts.emoji; if (emojiBtn) emojiBtn.textContent = currentEmoji; }
+      let tg = ev.tag||'default';
+      [...tagChips.querySelectorAll('.chip')].forEach(c=>c.classList.remove('active'));
+      if (['work','study','health','errand','default'].includes(tg)){
+        tagChips.querySelector(`[data-tag="${tg}"]`).classList.add('active'); tag = tg; mCustom.classList.add('hidden'); mCustom.value='';
+      } else {
+        tagChips.querySelector(`[data-tag="custom"]`).classList.add('active'); tag='custom'; mCustom.classList.remove('hidden'); mCustom.value=tg;
+      }
+      delBtn.classList.remove('hidden');
+      document.body.classList.add('modal-open');
+      modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false');
+      modalTitle.textContent = 'Edit event';
+    });
+    $('#deleteBtn')?.addEventListener('click', async ()=>{
+      await remove(ev.id); toastMsg('Deleted'); render();
+    });
+  }
+
+  // Render
+  async function render(){
+    const all = (await getAll()).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+    const todayISO = tzISO();
+
+    if (tab === 'today'){
+      const rows = all.filter(e=>e.date===todayISO).filter(matches);
+      view.innerHTML = `
+        <section class="section">
+          <div class="section-head">
+            <div class="h2" style="margin:0">Today · ${todayISO}</div>
+            <button id="addTopBtn" class="btn-add">Add</button>
+          </div>
+          <div id="tlMount" class="timeline-wrap"></div>
+          ${rows.length? '' : '<div class="muted">No events yet — tap Add.</div>'}
+        </section>
+      `;
+      $('#addTopBtn')?.addEventListener('click', ()=>{ clearForm(); document.body.classList.add('modal-open'); modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false'); modalTitle.textContent='Add event'; if (emojiBtn) emojiBtn.textContent = currentEmoji; });
+      buildTimelineVertical(rows, document.querySelector('#tlMount'));
+    } else if (tab === 'week'){
+      const days = Array.from({length:7},(_,i)=>addDays(todayISO,i));
+      const byDate = groupByDate(all.filter(matches));
+      view.innerHTML = `
+        <section class="section"><div class="h2">Next 7 days</div>
+          <div class="grid-week card glass">
+            ${days.map(d=>{
+              const dateObj = new Date(d+'T00:00:00');
+              const title = wkShort(dateObj.getDay())+' · '+d.slice(5);
+              const items = (byDate[d]||[]).map(e=>`<span class="pill"><b>${fmtTime(e.start)}</b> ${esc(e.title)}</span>`).join('') || `<div class="muted">—</div>`;
+              return `<div class="day"><h3>${title}</h3>${items}</div>`
+            }).join('')}
+          </div>
+        </section>
+      `;
+    } else {
+      const rows = all.filter(matches);
+      const groups = groupByDate(rows);
+      const dates = Object.keys(groups).sort();
+      view.innerHTML = `<section class="section"><div class="h2">All events</div><div id="allWrap" class="card glass"></div></section>`;
+      const wrap = document.querySelector('#allWrap');
+      for (const d of dates){
+        const head = document.createElement('div');
+        head.className = 'h2'; head.style.marginTop='6px'; head.textContent = d;
+        wrap.appendChild(head);
+        for (const e of groups[d]){
+          const row = document.createElement('div'); row.className = 'row';
+          row.innerHTML = `
+            <span class="badge">${fmtTime(e.start)}–${fmtTime(e.end)}</span>
+            <div>
+              <div class="title">${esc(e.title)}</div>
+              <div class="sub"><span class="tag"><span class="dot ${tagClass(e.tag||'default')}"></span>${esc(e.tag||'default')}</span> ${e.notes? '• '+esc(e.notes):''}</div>
+            </div>
+            <div class="actions">
+              <button class="ghost" data-act="edit" data-id="${e.id}">Edit</button>
+              <button class="ghost danger" data-act="del" data-id="${e.id}">Delete</button>
+            </div>
+          `;
+          wrap.appendChild(row);
+        }
+      }
+      if (!dates.length) wrap.innerHTML = '<div class="muted">No events yet.</div>';
+    }
+  }
+
+  // Init
+  (async function(){
+    await openDB();
+    if (emojiBtn && emojiBtn.textContent) currentEmoji = emojiBtn.textContent.trim() || currentEmoji;
+    query = search?.value?.trim().toLowerCase() || '';
+    render();
+  })();
+})();

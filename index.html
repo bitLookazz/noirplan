@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>NoirPlan</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Top search + tabs (shown on Schedule only) -->
+  <header class="nav">
+    <input id="search" class="search" placeholder="Search…" />
+    <div class="tabs">
+      <button class="nav-btn active" data-tab="today">Today</button>
+      <button class="nav-btn" data-tab="week">Week</button>
+      <button class="nav-btn" data-tab="all">All</button>
+    </div>
+  </header>
+
+  <!-- Main view -->
+  <main id="view" class="view"></main>
+
+  <!-- Add/Edit modal -->
+  <div id="modal" class="modal hidden" aria-hidden="true">
+    <div class="sheet glass">
+      <div class="sheet-head">
+        <h3 id="modalTitle">Add event</h3>
+        <button id="closeModal" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+
+      <div class="grid">
+        <label class="field">
+          <span>Date</span>
+          <input id="mDate" type="date" />
+        </label>
+
+        <div class="row">
+          <label class="field">
+            <span>Start</span>
+            <input id="mStart" type="time" />
+          </label>
+          <label class="field">
+            <span>End</span>
+            <input id="mEnd" type="time" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Activity</span>
+          <div class="emoji-input">
+            <button id="emojiBtn" type="button" class="emoji-btn">😀</button>
+            <input id="mTitle" type="text" placeholder="e.g. 🍳 Breakfast" />
+          </div>
+          <div id="emojiPicker" class="emoji-picker hidden" aria-hidden="true"></div>
+        </label>
+
+        <label class="field">
+          <span>Notes</span>
+          <textarea id="mNotes" rows="2" placeholder="Optional"></textarea>
+        </label>
+
+        <label class="field">
+          <span>Repeat</span>
+          <select id="mRepeat">
+            <option value="none">None</option>
+            <option value="daily">Daily (x10)</option>
+            <option value="weekly">Weekly (x10)</option>
+          </select>
+        </label>
+
+        <div class="chips" id="tagChips">
+          <button class="chip active" data-tag="default">Default</button>
+          <button class="chip" data-tag="work">Work</button>
+          <button class="chip" data-tag="study">Study</button>
+          <button class="chip" data-tag="health">Health</button>
+          <button class="chip" data-tag="errand">Errand</button>
+          <button class="chip" data-tag="custom">Custom…</button>
+        </div>
+        <input id="mCustom" class="hidden" placeholder="Custom tag" />
+
+        <div class="quick" id="quickTemplates">
+          <button class="tpl-btn" data-emoji="🍳" data-text="Breakfast">🍳 Breakfast</button>
+          <button class="tpl-btn" data-emoji="🍽️" data-text="Lunch">🍽️ Lunch</button>
+          <button class="tpl-btn" data-emoji="🍲" data-text="Dinner">🍲 Dinner</button>
+          <button class="tpl-btn" data-emoji="🥨" data-text="Snack">🥨 Snack</button>
+          <button class="tpl-btn" data-emoji="💤" data-text="Sleep">💤 Sleep</button>
+          <button class="tpl-btn" data-emoji="⏰" data-text="Wake up">⏰ Wake up</button>
+          <button class="tpl-btn" data-emoji="🚶" data-text="Walk">🚶 Walk</button>
+          <button class="tpl-btn" data-emoji="💼" data-text="Work">💼 Work</button>
+          <button class="tpl-btn" data-emoji="🍷" data-text="Wine">🍷 Wine</button>
+          <button class="tpl-btn" data-emoji="🚬" data-text="Smoke">🚬 Smoke</button>
+          <button class="tpl-btn" data-emoji="💩" data-text="Bowel Movement">💩 Bowel Movement</button>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button id="delBtn" class="btn danger hidden">Delete</button>
+        <div style="flex:1"></div>
+        <button id="saveBtn" class="btn primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
