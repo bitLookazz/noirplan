@@ -158,6 +158,7 @@
             <button class="home-btn" id="openStats">📈 Stats</button>
             <button class="home-btn" id="openSettings">⚙️ Settings</button>
             <button class="home-btn" id="openAbout">ℹ️ About</button>
+            <button class="home-btn" id="pwaInstallBtn">⬇️ Install</button>
           </div>
         </div>
         <div class="home-grid">
