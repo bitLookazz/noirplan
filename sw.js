@@ -1,4 +1,4 @@
-const CACHE_NAME = 'noirplan-v3';
+const CACHE_NAME = "noirplan-v4"
 const ASSETS = [
   './',
   './index.html',

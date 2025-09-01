@@ -163,5 +163,20 @@ window.addEventListener("appinstalled", () => {
 </script>
   <script src="pwa-install.js"></script>
   <script src="pwa-debug.js"></script>
+<script>
+
+  (function(){
+
+    if (!("serviceWorker" in navigator)) return;
+
+    const t=()=>{const c=!!navigator.serviceWorker.controller; console.log("SW control:", c);};
+
+    navigator.serviceWorker.getRegistration().then(()=>{t();});
+
+    navigator.serviceWorker.addEventListener("controllerchange", t);
+
+  })();
+
+</script> <!-- np-swdbg -->
 </body>
 </html>
