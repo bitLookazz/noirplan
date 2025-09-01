@@ -1,9 +1,12 @@
-const CACHE_NAME = 'noirplan-v1-readd';
+const CACHE_NAME = 'noirplan-v13';
 const ASSETS = [
   '/noirplan/',
   '/noirplan/index.html',
+  '/noirplan/home/index.html',
+  '/noirplan/install/index.html',
   '/noirplan/styles.css',
   '/noirplan/app.js',
+  '/noirplan/pwa-install.js',
   '/noirplan/manifest.json',
   '/noirplan/icons/icon-192.png',
   '/noirplan/icons/icon-512.png'

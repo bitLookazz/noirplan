@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NoirPlan · Install</title>
+  <link rel="manifest" href="/noirplan/manifest.json" type="application/manifest+json">
+  <meta name="theme-color" content="#0a0a0b">
+  <link rel="icon" href="/noirplan/icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    body { display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0 }
+    .card { max-width:600px;width:100%;padding:24px }
+    .cta { display:flex;gap:12px;flex-wrap:wrap;margin-top:16px }
+    ol { margin-top:16px;color:var(--muted);line-height:1.5 }
+  </style>
+</head>
+<body>
+  <div class="glass card">
+    <h1 class="home-title">Install NoirPlan</h1>
+    <div class="home-sub">Get the app as a standalone, full-screen icon with offline support.</div>
+    <div class="cta">
+      <button class="home-btn primary" id="pwaInstallBtn">⬇️ Install App</button>
+      <a class="home-btn" href="/noirplan/">← Back to App</a>
+    </div>
+    <ol>
+      <li><b>Android · Chrome:</b> open menu (⋮) → <b>Install app</b> or <b>Add to Home screen</b>.</li>
+      <li><b>Android · other browsers:</b> Share → <b>Add to Home screen</b>.</li>
+      <li><b>iOS · Safari:</b> Share → <b>Add to Home Screen</b>.</li>
+    </ol>
+  </div>
+
+  <script src="./pwa-install.js?v=restore"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/noirplan/sw.js',{scope:'/noirplan/'}).catch(console.error);
+    }
+  </script>
+</body>
+</html>
