@@ -1,44 +1,36 @@
-const CACHE_NAME = "noirplan-v4"
+const CACHE_NAME = 'noirplan-v1-readd';
 const ASSETS = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js',
-  './manifest.webmanifest',
-  './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  '/noirplan/',
+  '/noirplan/index.html',
+  '/noirplan/styles.css',
+  '/noirplan/app.js',
+  '/noirplan/manifest.json',
+  '/noirplan/icons/icon-192.png',
+  '/noirplan/icons/icon-512.png'
 ];
-
-self.addEventListener('install', (e) => {
+self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(CACHE_NAME);
-    await c.addAll(ASSETS);
+    try { await c.addAll(ASSETS); } catch(_) {}
     self.skipWaiting();
   })());
 });
-
-self.addEventListener('activate', (e) => {
+self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });
-
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
+self.addEventListener('fetch', e => {
   e.respondWith((async () => {
-    const cached = await caches.match(req);
-    const fetchPromise = fetch(req).then(net => {
-      caches.open(CACHE_NAME).then(c => c.put(req, net.clone())).catch(()=>{});
+    const cached = await caches.match(e.request);
+    try {
+      const net = await fetch(e.request);
+      caches.open(CACHE_NAME).then(c => c.put(e.request, net.clone())).catch(()=>{});
       return net;
-    }).catch(() => cached || Response.error());
-    return cached || fetchPromise;
+    } catch {
+      return cached || Response.error();
+    }
   })());
-});
-
-// allow page to ask SW to skip waiting (optional)
-self.addEventListener('message', (e)=>{
-  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });

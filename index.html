@@ -110,7 +110,6 @@
 
 if ("serviceWorker" in navigator) {
 
-  navigator.serviceWorker.register("./sw.js").catch(console.error);
 
 }
 
@@ -178,5 +177,6 @@ window.addEventListener("appinstalled", () => {
   })();
 
 </script> <!-- np-swdbg -->
+<script>/* pwa-swreg-abs */if("serviceWorker" in navigator){navigator.serviceWorker.register("/noirplan/sw.js",{scope:"/noirplan/"}).catch(console.error);}</script>
 </body>
 </html>
